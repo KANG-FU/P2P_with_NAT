@@ -13,11 +13,7 @@ import (
 func main() {
 	fmt.Println("begin server")
 	//服务器启动侦听
-	//listener, err := net.ListenUDP("udp", &net.UDPAddr{Port: 9527})
-	listener, err := net.ListenUDP("udp", &net.UDPAddr{
-		IP: net.ParseIP("185.25.192.150"),
-		Port: 43346,
-	})
+	listener, err := net.ListenUDP("udp", &net.UDPAddr{Port: 8888})
 	if err != nil{
 		log.Panic("Failed to ListenUDP", err)
 	}

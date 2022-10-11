@@ -18,8 +18,8 @@ func main() {
 	port, _ := strconv.Atoi(os.Args[1])
 	localAddr := net.UDPAddr{Port: port,}
 	remoteAddr := net.UDPAddr{
-		IP: net.ParseIP("10.20.3.135"),
-		Port: 9527,
+		IP: net.ParseIP("20.203.137.35"),
+		Port: 8080,
 	}
 
 	conn, err := net.DialUDP("udp",&localAddr, &remoteAddr)
