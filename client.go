@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+const serverIP = "20.208.131.198"
+
 func main() {
 	if len(os.Args) < 4 {
 		fmt.Println("./client port name target")
@@ -18,28 +20,41 @@ func main() {
 	name := os.Args[2]
 	target := os.Args[3]
 	port, _ := strconv.Atoi(os.Args[1])
+	peerChat(name, target, port, serverIP)
+
+}
+
+
+func peerChat(source, dest string, port int, serverIP string) {
 	localAddr := net.UDPAddr{Port: port}
 	registerRemoteAddr := net.UDPAddr{
-		IP:   net.ParseIP("10.20.3.135"),
+		IP:   net.ParseIP(serverIP),
 		Port: 8081,
 	}
 	targetRemoteAddr := net.UDPAddr{
-		IP:   net.ParseIP("10.20.3.135"),
+		IP:   net.ParseIP(serverIP),
 		Port: 8080,
 	}
-	register(localAddr, registerRemoteAddr, name)
-	time.Sleep(10 * time.Second)
-	toAddr := getDestAddr(localAddr, targetRemoteAddr, name, target)
-	fmt.Println("target addr", toAddr)
+	register(localAddr, registerRemoteAddr, source)
+	time.Sleep(1 * time.Second)
+	var toAddr net.UDPAddr
+	for {
+		msgReceived := getDestAddr(localAddr, targetRemoteAddr, source, dest)
+		if len(msgReceived) != 4 {
+			toAddr = parseIP(string(msgReceived))
+			fmt.Println("target addr", toAddr)
+			break
+		} else {
+			fmt.Println("target peer is busy")
+		}
+		time.Sleep(10 * time.Second)
+	}
 	p2pchat(&localAddr, &toAddr)
+
 }
 
 func parseIP(addr string) net.UDPAddr {
 	strs := strings.Split(addr, ":")
-	// if len(strs) != 2 {
-	// 	fmt.Println("ip addr is not valid")
-	// 	return nil , errors.New("ipaddr err")
-	// }
 	ip := strs[0]
 	port, _ := strconv.Atoi(strs[1])
 	return net.UDPAddr{
@@ -63,23 +78,25 @@ func register(localAddr, remoteAddr net.UDPAddr, source string) {
 	conn.Close()
 }
 
-func getDestAddr(localAddr, remoteAddr net.UDPAddr, source, dest string) net.UDPAddr {
+func getDestAddr(localAddr, remoteAddr net.UDPAddr, source, dest string) string {
 	conn, err := net.DialUDP("udp", &localAddr, &remoteAddr)
 	if err != nil {
 		log.Panic("failed to DialUDP", err)
 	}
 	conn.Write([]byte(source + ":" + dest))
-	fmt.Println("sending target")
 
 	buf := make([]byte, 256)
 	n, _, err := conn.ReadFromUDP(buf)
 	if err != nil {
 		log.Panic("failed to ReadFromUDP", err)
 	}
-	toAddr := parseIP(string(buf[:n]))
 	conn.Close()
-	return toAddr
+	return string(buf[:n])
 }
+
+// func stop(localAddr, remoteAddr net.UDPAddr) {
+
+// }
 
 func p2pchat(fromAddr, toAddr *net.UDPAddr) {
 	conn, err := net.DialUDP("udp", fromAddr, toAddr)
@@ -94,7 +111,6 @@ func p2pchat(fromAddr, toAddr *net.UDPAddr) {
 		buf := make([]byte, 256)
 		for {
 			n, _, err := conn.ReadFromUDP(buf)
-			fmt.Println("received")
 			if err != nil {
 				fmt.Println("readFromUDP err", err)
 				continue
@@ -111,5 +127,8 @@ func p2pchat(fromAddr, toAddr *net.UDPAddr) {
 			log.Panic("failed to read string", err)
 		}
 		conn.Write([]byte(data))
+		if data == "stop" {
+			break
+		}
 	}
 }

@@ -14,12 +14,9 @@ import (
 // exchange messages
 // quit not affect A and B commuication
 type peers struct {
-	mu   sync.RWMutex
-	addr map[string]*net.UDPAddr
-	ch   chan struct {
-		string
-		*net.UDPAddr
-	}
+	mu    sync.RWMutex
+	addr  map[string]*net.UDPAddr
+	state map[string]bool
 }
 
 func main() {
@@ -27,7 +24,8 @@ func main() {
 
 	//peers := make([]*net.UDPAddr,2)
 	p := peers{
-		addr: make(map[string]*net.UDPAddr),
+		addr:  make(map[string]*net.UDPAddr),
+		state: make(map[string]bool),
 	}
 	listener, err := net.ListenUDP("udp", &net.UDPAddr{Port: 8081})
 	if err != nil {
@@ -41,19 +39,6 @@ func main() {
 	go p.findTargetAddr(listener1)
 	for {
 	}
-	// n, addr, err = listener.ReadFromUDP(buf)
-	// if err != nil {
-	// 	log.Panic("2 Fail to readFromUDP")
-	// }
-	// msg = strings.Split(string(buf[:n]), ":")
-	// peers[msg[0]] = addr.String()
-	// fmt.Printf("read %d size, from %s, msg: %s",n,addr.String(),buf[:n])
-	// // Exchange messages
-	// listener.WriteToUDP([]byte(peers[0].String()), peers[1])
-	// listener.WriteToUDP([]byte(peers[1].String()), peers[0])
-	// Exit()
-	// fmt.Println("the server will disconnect after 10 seconds")
-	// time.Sleep(time.Second*10)
 
 }
 
@@ -67,6 +52,7 @@ func (p *peers) receiveRegistration(listener *net.UDPConn) {
 		msg := strings.Split(string(buf[:n]), ":")
 		p.mu.Lock()
 		p.addr[msg[1]] = addr
+		p.state[msg[1]] = false
 		p.mu.Unlock()
 		fmt.Printf("read %d size, from %s, msg: %s \n", n, addr.String(), buf[:n])
 
@@ -89,16 +75,16 @@ func (p *peers) findTargetAddr(listener *net.UDPConn) {
 			t, ok := p.addr[msg[1]]
 
 			if ok {
-				listener.WriteToUDP([]byte(t.String()), p.addr[msg[0]])
+				if p.state[msg[1]] {
+					listener.WriteToUDP([]byte("busy"), p.addr[msg[0]])
+				} else {
+					p.state[msg[1]] = true
+					listener.WriteToUDP([]byte(t.String()), p.addr[msg[0]])
+				}
 				p.mu.Unlock()
-				return
+				break
 			}
 			p.mu.Unlock()
 		}
 	}
 }
-
-// // func (p *peers) findTargetAddr(listener *net.UDPConn){
-// // 	source, dest := p.receiveTargetAddr(listener)
-
-// // }
