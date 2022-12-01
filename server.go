@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"time"
 
 	"strings"
 	"sync"
@@ -17,6 +18,8 @@ type peers struct {
 	mu    sync.RWMutex
 	addr  map[string]*net.UDPAddr
 	state map[string]bool
+	// socketRegistration  *net.UDPConn
+	// socketReceive *net.UDPConn
 }
 
 func main() {
@@ -51,15 +54,36 @@ func (p *peers) receiveRegistration(listener *net.UDPConn) {
 		}
 		msg := strings.Split(string(buf[:n]), ":")
 		p.mu.Lock()
-		p.addr[msg[1]] = addr
-		p.state[msg[1]] = false
+		if _, ok := p.addr[msg[1]]; ok {
+			fmt.Printf("%s has already registered \n", addr.String())
+			listener.WriteToUDP([]byte("already registered"), addr)
+		} else {
+			p.addr[msg[1]] = addr
+			p.state[msg[1]] = false
+			fmt.Printf("read %d size, from %s, msg: %s \n", n, addr.String(), buf[:n])
+			listener.WriteToUDP([]byte("register successful"), addr)
+		}
 		p.mu.Unlock()
-		fmt.Printf("read %d size, from %s, msg: %s \n", n, addr.String(), buf[:n])
-
-		listener.WriteToUDP([]byte("register successful"), addr)
 	}
 
 }
+
+// func (p *peers) receiveStop(listener *net.UDPConn) {
+// 	for {
+// 		buf := make([]byte, 256)
+// 		n, addr, err := listener.ReadFromUDP(buf)
+// 		if err != nil {
+// 			log.Panic("Fail to readFromUDP")
+// 		}
+// 		msg := strings.Split(string(buf[:n]), ":")
+// 		p.mu.Lock()
+// 		p.state[msg[1]] = false
+// 		p.mu.Unlock()
+// 		fmt.Printf("from %s, msg: %s  \n", n, addr.String(), buf[:n])
+// 		listener.WriteToUDP([]byte("ACK"), addr)
+// 	}
+
+// }
 
 func (p *peers) findTargetAddr(listener *net.UDPConn) {
 	for {
@@ -70,21 +94,29 @@ func (p *peers) findTargetAddr(listener *net.UDPConn) {
 		}
 
 		msg := strings.Split(string(buf[:n]), ":")
-		for {
-			p.mu.Lock()
-			t, ok := p.addr[msg[1]]
-
-			if ok {
-				if p.state[msg[1]] {
-					listener.WriteToUDP([]byte("busy"), p.addr[msg[0]])
-				} else {
-					p.state[msg[1]] = true
-					listener.WriteToUDP([]byte(t.String()), p.addr[msg[0]])
-				}
-				p.mu.Unlock()
-				break
-			}
-			p.mu.Unlock()
+		done := make(chan string, 1)
+		go p.checkPeerMap(msg, done)
+		select {
+		case <-time.After(time.Second * 10):
+			fmt.Println("Timeout")
+			listener.WriteToUDP([]byte("currently not online"), p.addr[msg[0]])
+		case m := <-done:
+			listener.WriteToUDP([]byte(m), p.addr[msg[0]])
 		}
 	}
+}
+
+func (p *peers) checkPeerMap(msg []string, done chan string) {
+	p.mu.Lock()
+	t, ok := p.addr[msg[1]]
+
+	if ok {
+		if p.state[msg[1]] {
+			done <- "busy"
+		} else {
+			p.state[msg[1]] = true
+			done <- t.String()
+		}
+	}
+	p.mu.Unlock()
 }
